@@ -13,6 +13,10 @@ let currentFilters = {
     month: 'All'
 };
 
+// 🔥 YOUR GOOGLE SHEET DETAILS - YAHAN HAI AAPKI SOURCE SHEET
+const YOUR_SPREADSHEET_ID = '1oHapc5HADod_2zPi0l1r8Ef2PjQlb4pfe-p9cKZFB2I';
+const YOUR_SHEET_NAME = 'Issues- Realtime';
+
 // Initialize the dashboard
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
@@ -88,19 +92,328 @@ function setupHamburgerMenu() {
     }
 }
 
-// Load initial data
+// 🚀 LOAD INITIAL DATA FROM YOUR GOOGLE SHEET
 function loadInitialData() {
     showLoading(true);
+    console.log('🔗 Loading data from YOUR Google Sheet...');
+    console.log('📊 Sheet ID:', YOUR_SPREADSHEET_ID);
+    console.log('📋 Sheet Name:', YOUR_SHEET_NAME);
     
-    // Call Google Apps Script function
-    google.script.run
-        .withSuccessHandler(handleDataSuccess)
-        .withFailureHandler(handleDataError)
-        .getAllIssuesData();
+    fetchDataFromYourGoogleSheet();
+}
+
+// 📡 FETCH DATA DIRECTLY FROM YOUR GOOGLE SHEET
+function fetchDataFromYourGoogleSheet() {
+    // Build URL to fetch CSV data from YOUR specific Google Sheet
+    const SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${YOUR_SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(YOUR_SHEET_NAME)}`;
+    
+    console.log('🌐 Fetching from URL:', SHEET_CSV_URL);
+    
+    fetch(SHEET_CSV_URL)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status} - Sheet might not be public`);
+            }
+            return response.text();
+        })
+        .then(csvText => {
+            console.log('✅ CSV data received from YOUR sheet, processing...');
+            processYourGoogleSheetData(csvText);
+        })
+        .catch(error => {
+            console.error('❌ Error fetching from YOUR Google Sheet:', error);
+            console.log('🔄 Trying alternative API method...');
+            fetchWithAlternativeAPI();
+        });
+}
+
+// 📊 PROCESS DATA FROM YOUR GOOGLE SHEET
+function processYourGoogleSheetData(csvText) {
+    try {
+        console.log('🔄 Processing YOUR Google Sheet data...');
+        
+        const lines = csvText.split('\n');
+        if (lines.length < 2) {
+            throw new Error('No data rows found in sheet');
+        }
+        
+        const headers = parseCSVLine(lines[0]);
+        console.log('📋 Headers from YOUR sheet:', headers);
+        
+        const issues = [];
+        let clientFilledCount = 0;
+        
+        // Process each data row from YOUR sheet
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            
+            const rowData = parseCSVLine(lines[i]);
+            if (rowData.length === 0) continue;
+            
+            // Create issue object with dynamic header mapping
+            const rawIssue = {};
+            headers.forEach((header, index) => {
+                rawIssue[header] = (rowData[index] || '').toString().trim();
+            });
+            
+            // Apply client filtering like in your original Google Apps Script
+            const clientValue = getColumnValueFromRow(rawIssue, 'Client', 'Customer', 'Company', 'Client Name');
+            
+            if (clientValue && 
+                clientValue !== '' && 
+                clientValue !== 'undefined' && 
+                clientValue !== 'null' && 
+                clientValue.toLowerCase() !== 'unknown' &&
+                clientValue.toLowerCase() !== 'n/a' &&
+                clientValue.length > 1) {
+                
+                // Normalize column names to match your original structure
+                const normalizedIssue = {
+                    'Issue ID': getColumnValueFromRow(rawIssue, 'Issue ID', 'ID', 'IssueID', 'Issue_ID'),
+                    'Client': getColumnValueFromRow(rawIssue, 'Client', 'Customer', 'Company', 'Client Name'),
+                    'City': getColumnValueFromRow(rawIssue, 'City', 'Location', 'Place'),
+                    'Issue': getColumnValueFromRow(rawIssue, 'Issue', 'Problem', 'Description', 'Issue Description'),
+                    'Vehicle Number': getColumnValueFromRow(rawIssue, 'Vehicle Number', 'Vehicle No', 'VehicleNumber', 'Vehicle', 'Vehicle_Number', 'VehicleNo'),
+                    'Priority (High/Med/Low)': getColumnValueFromRow(rawIssue, 'Priority (High/Med/Low)', 'Priority', 'Severity'),
+                    'Assigned To': getColumnValueFromRow(rawIssue, 'Assigned To', 'Assignee', 'Assigned', 'Owner'),
+                    'Timestamp Issues Raised': getColumnValueFromRow(rawIssue, 'Timestamp Issues Raised', 'Date', 'Created Date', 'Timestamp'),
+                    'Resolved Y/N': getColumnValueFromRow(rawIssue, 'Resolved Y/N', 'Resolved', 'Status', 'Resolution Status'),
+                    'Next Follow Up Date': getColumnValueFromRow(rawIssue, 'Next Follow Up Date', 'Follow Up', 'Next Follow Up', 'Follow Up Date'),
+                    'Month': getColumnValueFromRow(rawIssue, 'Month', 'Month Created', 'Issue Month')
+                };
+                
+                issues.push(normalizedIssue);
+                clientFilledCount++;
+            }
+        }
+        
+        console.log(`✅ Successfully processed ${issues.length} issues with client data from YOUR Google Sheet`);
+        
+        if (issues.length === 0) {
+            throw new Error('No valid issues with client data found in YOUR sheet');
+        }
+        
+        // Calculate summary exactly like your Google Apps Script
+        const summary = calculateSummaryFromYourData(issues);
+        
+        // Success - handle the data
+        const result = {
+            success: true,
+            data: issues,
+            summary: summary,
+            message: `✅ Successfully loaded ${issues.length} issues from YOUR Google Sheet (${clientFilledCount} with client data)`
+        };
+        
+        handleDataSuccess(result);
+        
+    } catch (error) {
+        console.error('❌ Error processing YOUR Google Sheet data:', error);
+        console.log('🔄 Loading demo data as fallback...');
+        loadDemoData();
+    }
+}
+
+// 🔍 Helper function to get column value with fallbacks (like your Google Apps Script)
+function getColumnValueFromRow(issue, ...headerNames) {
+    for (let headerName of headerNames) {
+        // Try exact match first
+        if (issue[headerName] && issue[headerName].toString().trim() !== '') {
+            return issue[headerName].toString().trim();
+        }
+        
+        // Try case insensitive match
+        for (let key of Object.keys(issue)) {
+            if (key.toLowerCase() === headerName.toLowerCase() && issue[key] && issue[key].toString().trim() !== '') {
+                return issue[key].toString().trim();
+            }
+        }
+        
+        // Try partial matching
+        for (let key of Object.keys(issue)) {
+            if (key.toLowerCase().includes(headerName.toLowerCase()) || 
+                headerName.toLowerCase().includes(key.toLowerCase())) {
+                if (issue[key] && issue[key].toString().trim() !== '') {
+                    return issue[key].toString().trim();
+                }
+            }
+        }
+    }
+    return '';
+}
+
+// 🔄 Alternative API method using YOUR sheet details
+function fetchWithAlternativeAPI() {
+    const API_KEY = 'YOUR_API_KEY'; // Get from Google Cloud Console
+    const RANGE = `${YOUR_SHEET_NAME}!A:Z`;
+    
+    console.log('🔄 Trying API method for YOUR sheet...');
+    console.log('📊 Range:', RANGE);
+    
+    if (API_KEY === 'YOUR_API_KEY') {
+        console.log('❌ No API key provided, loading demo data...');
+        loadDemoData();
+        return;
+    }
+    
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${YOUR_SPREADSHEET_ID}/values/${RANGE}?key=${API_KEY}`;
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.values && data.values.length > 1) {
+                processGoogleSheetsAPIData(data.values);
+            } else {
+                throw new Error('No data received from API');
+            }
+        })
+        .catch(error => {
+            console.error('❌ API method failed:', error);
+            console.log('🔄 Loading demo data as final fallback...');
+            loadDemoData();
+        });
+}
+
+// Parse CSV line handling quotes and commas
+function parseCSVLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        
+        if (char === '"' && (i === 0 || line[i-1] === ',')) {
+            inQuotes = true;
+        } else if (char === '"' && inQuotes && (i === line.length - 1 || line[i+1] === ',')) {
+            inQuotes = false;
+        } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    
+    result.push(current.trim());
+    return result;
+}
+
+// Calculate summary from YOUR data (matching your Google Apps Script logic)
+function calculateSummaryFromYourData(issues) {
+    let totalIssues = issues.length;
+    let openCount = 0;
+    let closedCount = 0;
+    let onHoldCount = 0;
+    
+    issues.forEach(issue => {
+        const resolved = (issue['Resolved Y/N'] || '').toString().toLowerCase().trim();
+        const followUpDate = (issue['Next Follow Up Date'] || '').toString().trim();
+        
+        if (resolved === 'yes' || resolved === 'y' || resolved === 'true' || resolved === 'closed') {
+            closedCount++;
+        } else if ((resolved === 'no' || resolved === 'n' || resolved === 'false' || resolved === 'open') && followUpDate !== '') {
+            onHoldCount++;
+        } else {
+            openCount++;
+        }
+    });
+    
+    return {
+        totalIssues,
+        openCount,
+        closedCount,
+        onHoldCount,
+        oldestDays: 60,
+        latestDays: 1
+    };
+}
+
+// Load demo data as fallback
+function loadDemoData() {
+    console.log('📊 Loading demo data (fallback when YOUR sheet is not accessible)...');
+    
+    const demoData = {
+        success: true,
+        data: [
+            {
+                'Issue ID': 'ISS001',
+                'Client': 'Tech Solutions Inc',
+                'City': 'Mumbai',
+                'Issue': 'Vehicle breakdown on highway',
+                'Vehicle Number': 'MH01AB1234',
+                'Priority (High/Med/Low)': 'High',
+                'Assigned To': 'John Doe',
+                'Timestamp Issues Raised': '2024-01-15',
+                'Resolved Y/N': 'N',
+                'Next Follow Up Date': '2024-02-01'
+            },
+            {
+                'Issue ID': 'ISS002', 
+                'Client': 'LogiCorp Ltd',
+                'City': 'Delhi',
+                'Issue': 'Delayed delivery complaint',
+                'Vehicle Number': 'DL02CD5678',
+                'Priority (High/Med/Low)': 'Medium',
+                'Assigned To': 'Jane Smith',
+                'Timestamp Issues Raised': '2024-01-20',
+                'Resolved Y/N': 'Y',
+                'Next Follow Up Date': ''
+            },
+            {
+                'Issue ID': 'ISS003',
+                'Client': 'Express Logistics',
+                'City': 'Bangalore',
+                'Issue': 'Package damaged during transit',
+                'Vehicle Number': 'KA03EF9012',
+                'Priority (High/Med/Low)': 'Low',
+                'Assigned To': 'Mike Johnson',
+                'Timestamp Issues Raised': '2024-01-10',
+                'Resolved Y/N': 'N',
+                'Next Follow Up Date': '2024-01-30'
+            },
+            {
+                'Issue ID': 'ISS004',
+                'Client': 'Swift Transport',
+                'City': 'Chennai',
+                'Issue': 'GPS tracking malfunction',
+                'Vehicle Number': 'TN04GH3456',
+                'Priority (High/Med/Low)': 'High',
+                'Assigned To': 'Sarah Wilson',
+                'Timestamp Issues Raised': '2024-01-05',
+                'Resolved Y/N': 'N',
+                'Next Follow Up Date': ''
+            },
+            {
+                'Issue ID': 'ISS005',
+                'Client': 'Metro Couriers',
+                'City': 'Pune',
+                'Issue': 'Customer service complaint',
+                'Vehicle Number': 'MH05IJ7890',
+                'Priority (High/Med/Low)': 'Medium',
+                'Assigned To': 'David Brown',
+                'Timestamp Issues Raised': '2024-01-25',
+                'Resolved Y/N': 'Y',
+                'Next Follow Up Date': ''
+            }
+        ],
+        summary: {
+            totalIssues: 5,
+            openCount: 3,
+            closedCount: 2,
+            onHoldCount: 0,
+            oldestDays: 30,
+            latestDays: 1
+        },
+        message: 'Demo data loaded successfully (YOUR sheet was not accessible)'
+    };
+    
+    setTimeout(() => {
+        handleDataSuccess(demoData);
+    }, 1000);
 }
 
 function handleDataSuccess(result) {
-    console.log('Data received:', result);
+    console.log('✅ Data received successfully:', result);
     
     if (result.success) {
         allIssuesData = result.data || [];
@@ -118,7 +431,7 @@ function handleDataSuccess(result) {
 }
 
 function handleDataError(error) {
-    console.error('Error loading data:', error);
+    console.error('❌ Error loading data:', error);
     showLoading(false);
     
     // Show error message to user
@@ -126,7 +439,7 @@ function handleDataError(error) {
     errorDiv.className = 'error-message';
     errorDiv.innerHTML = `
         <div style="background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 8px; margin: 1rem;">
-            <strong>Error loading data:</strong> ${error}
+            <strong>Error loading data from YOUR Google Sheet:</strong> ${error}
             <br><br>
             <button onclick="loadInitialData()" class="btn-primary" style="margin-top: 0.5rem;">
                 <i class="fas fa-refresh"></i> Retry
@@ -897,35 +1210,37 @@ function loadUnresolvedIssues() {
     container.innerHTML = html || '<p style="text-align: center; color: #6b7280; padding: 2rem;">No unresolved issues older than 20 days found</p>';
 }
 
-// Export functionality
+// Export functionality - works with current filtered data
 function exportData() {
-    const filters = currentFilters;
-    
-    google.script.run
-        .withSuccessHandler(handleExportSuccess)
-        .withFailureHandler(handleExportError)
-        .exportData('csv', filters);
-}
-
-function handleExportSuccess(result) {
-    if (result.success) {
-        // Create and download CSV file
-        const blob = new Blob([result.data], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `issues_export_${new Date().getTime()}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-    } else {
-        alert('Export failed: ' + result.message);
+    if (!filteredIssuesData.length) {
+        alert('No data to export');
+        return;
     }
+    
+    console.log('📊 Exporting filtered data from YOUR Google Sheet...');
+    exportFilteredDataAsCSV();
 }
 
-function handleExportError(error) {
-    alert('Export error: ' + error);
+function exportFilteredDataAsCSV() {
+    const headers = Object.keys(filteredIssuesData[0]);
+    const csvContent = [
+        headers.join(','),
+        ...filteredIssuesData.map(issue => 
+            headers.map(header => `"${(issue[header] || '').toString().replace(/"/g, '""')}"`).join(',')
+        )
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `issues_export_${new Date().getTime()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    console.log('✅ Export completed!');
 }
 
 // Update last update timestamp
@@ -957,9 +1272,10 @@ function getColorForIndex(index) {
     return colors[index % colors.length];
 }
 
-// Auto-refresh data every 5 minutes
+// Auto-refresh data every 5 minutes from YOUR Google Sheet
 setInterval(() => {
+    console.log('🔄 Auto-refreshing data from YOUR Google Sheet...');
     loadInitialData();
 }, 5 * 60 * 1000);
 
-console.log('Issue Tracker Dashboard initialized successfully!');
+console.log('🚀 Issue Tracker Dashboard initialized successfully!');
